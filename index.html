@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Certification Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <header class="site-header">
+        <div class="container">
+            <h1>🎓 Certification Tracking Dashboard</h1>
+            <p class="subtitle">Track expirations, see warnings, and access certificates quickly.</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+    <section class="controls" aria-hidden="false">
+        <div class="container controls-row">
+            <div class="controls-left">
+                <input id="search" class="input search" type="search" placeholder="🔍 Search certifications, orgs..." aria-label="Search certifications">
+                <select id="filter" class="select" aria-label="Filter by status">
+                    <option value="all">All statuses</option>
+                    <option value="valid">Valid</option>
+                    <option value="warning">Expiring soon</option>
+                    <option value="expired">Expired</option>
+                </select>
+                <select id="sort" class="select" aria-label="Sort">
+                    <option value="exp-asc">Expires soonest</option>
+                    <option value="exp-desc">Expires latest</option>
+                    <option value="name-asc">Name A → Z</option>
+                    <option value="name-desc">Name Z → A</option>
+                </select>
+            </div>
+            <div class="controls-right">
+                <button id="addBtn" class="btn btn-primary">+ Add Certificate</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="table-wrap" aria-labelledby="cert-heading">
+        <h2 id="cert-heading" class="visually-hidden">Certifications</h2>
+        <table id="certification-table" class="cert-table">
+        <thead>
+            <tr>
+                <th>Certification Name</th>
+                <th>Issuing Organization</th>
+                <th>Issue Date</th>
+                <th>Expiration Date</th>
+                <th>Status</th>
+                <th>Certificate</th>
+            </tr>
+        </thead>
+        <tbody id="cert-data">
+            <!-- Certificates will be dynamically generated -->
+        </tbody>
+    </table>
+    </section>
+
+    <p class="notes">💡 Tip: Use the search and filter options to find specific certificates. Click "View" to see certificate details.</p>
+
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <small>© 2025 Certification Tracker — keep your records up to date. Last updated: 2025-11-08</small>
+        </div>
+    </footer>
+
+    <!-- Add Certificate Modal -->
+    <div id="modal" class="modal" aria-hidden="true">
+        <div class="modal-overlay" id="modalOverlay"></div>
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <header class="modal-header">
+                <h3 id="modalTitle">Add Certificate</h3>
+                <button id="modalClose" class="btn btn-ghost" aria-label="Close">✕</button>
+            </header>
+            <form id="addForm" class="modal-form">
+                <label class="field"><span>Name</span><input name="name" required type="text" placeholder="e.g. CompTIA Security+" /></label>
+                <label class="field"><span>Organization</span><input name="org" required type="text" placeholder="e.g. CompTIA" /></label>
+                <label class="field"><span>Issue Date</span><input name="issueDate" required type="date" /></label>
+                <label class="field"><span>Expiration Date</span><input name="expDate" required type="date" /></label>
+                <label class="field"><span>Certificate URL (optional)</span><input name="link" type="url" placeholder="https://... or leave blank" /></label>
+                <div class="modal-actions">
+                    <button type="button" id="cancelAdd" class="btn btn-ghost">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Certificate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Certificate Viewer Modal -->
+    <div id="certViewerModal" class="modal cert-viewer-modal" aria-hidden="true">
+        <div class="modal-overlay" id="certViewerOverlay"></div>
+        <div class="modal-panel cert-viewer-panel" role="dialog" aria-modal="true" aria-labelledby="certViewerTitle">
+            <header class="modal-header">
+                <h3 id="certViewerTitle">Certificate Details</h3>
+                <button id="certViewerClose" class="btn btn-ghost" aria-label="Close">✕</button>
+            </header>
+            <div id="certViewerContent" class="cert-viewer-content">
+                <!-- Certificate content will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+                <script>
+                    document.addEventListener('DOMContentLoaded', () => {
+                        // Elements
+                        const tbody = document.getElementById('cert-data');
+                        const searchInput = document.getElementById('search');
+                        const filterSelect = document.getElementById('filter');
+                        const sortSelect = document.getElementById('sort');
+                        const addBtn = document.getElementById('addBtn');
+                        const modal = document.getElementById('modal');
+                        const modalOverlay = document.getElementById('modalOverlay');
+                        const modalClose = document.getElementById('modalClose');
+                        const cancelAdd = document.getElementById('cancelAdd');
+                        const addForm = document.getElementById('addForm');
+            const certViewerModal = document.getElementById('certViewerModal');
+            const certViewerOverlay = document.getElementById('certViewerOverlay');
+            const certViewerClose = document.getElementById('certViewerClose');
+            const certViewerContent = document.getElementById('certViewerContent');
+            const certViewerTitle = document.getElementById('certViewerTitle');
+
+                        const STORAGE_KEY = 'certificates_v1';
+                        const warningDays = 90;
+
+            // Demo certificate data with rich content
+            const demoCertificates = [
+                {
+                    name: 'CompTIA Security+',
+                    org: 'CompTIA',
+                    issueDate: '2024-01-15',
+                    expDate: '2027-01-15',
+                    id: 'compTIA-security-plus',
+                    credentialId: 'COMP001234567',
+                    description: 'Validates baseline skills for IT security professionals. Covers network security, compliance, threats, and vulnerabilities.'
+                },
+                {
+                    name: 'Agile Scrum Master',
+                    org: 'Scrum Alliance',
+                    issueDate: '2022-03-01',
+                    expDate: '2025-03-01',
+                    id: 'scrum-master',
+                    credentialId: 'CSM-2022-ABC123',
+                    description: 'Certified Scrum Master credential demonstrating expertise in agile methodologies and Scrum framework implementation.'
+                },
+                {
+                    name: 'Google Data Analytics Certificate',
+                    org: 'Coursera/Google',
+                    issueDate: '2021-05-20',
+                    expDate: '2023-05-20',
+                    id: 'google-data-analytics',
+                    credentialId: 'GDA-2021-XYZ789',
+                    description: 'Professional certificate in data analytics covering SQL, R programming, data visualization, and statistical analysis.'
+                },
+                {
+                    name: 'AWS Certified Solutions Architect',
+                    org: 'AWS',
+                    issueDate: '2023-09-10',
+                    expDate: '2026-09-10',
+                    id: 'aws-solutions-architect',
+                    credentialId: 'AWS-CSA-2023-456789',
+                    description: 'Demonstrates expertise in designing distributed systems on AWS. Covers architectural best practices and cost optimization.'
+                },
+                {
+                    name: 'Microsoft Azure Fundamentals',
+                    org: 'Microsoft',
+                    issueDate: '2022-11-20',
+                    expDate: '2025-11-20',
+                    id: 'azure-fundamentals',
+                    credentialId: 'AZ-900-2022-MIC789',
+                    description: 'Fundamental understanding of cloud services and how those services are provided with Microsoft Azure.'
+                },
+                {
+                    name: 'Certified Ethical Hacker (CEH)',
+                    org: 'EC-Council',
+                    issueDate: '2021-10-01',
+                    expDate: '2024-10-01',
+                    id: 'ceh',
+                    credentialId: 'CEH-2021-EC123456',
+                    description: 'Validates skills in finding vulnerabilities and weaknesses in target systems and uses the same knowledge and tools as malicious hackers.'
+                },
+                {
+                    name: 'Project Management Professional (PMP)',
+                    org: 'PMI',
+                    issueDate: '2023-06-15',
+                    expDate: '2026-06-15',
+                    id: 'pmp',
+                    credentialId: 'PMP-2023-PMI789',
+                    description: 'The gold standard project management certification recognizing demonstrated competence in leading and directing projects.'
+                },
+                {
+                    name: 'Oracle Java SE 11 Programmer',
+                    org: 'Oracle',
+                    issueDate: '2021-04-20',
+                    expDate: '2028-04-20',
+                    id: 'oracle-java',
+                    credentialId: '1Z0-819-2021-ORA456',
+                    description: 'Oracle Certified Professional Java SE 11 Developer certification demonstrating advanced Java programming skills.'
+                },
+                {
+                    name: 'Cisco Certified Network Associate (CCNA)',
+                    org: 'Cisco',
+                    issueDate: '2022-12-05',
+                    expDate: '2025-12-05',
+                    id: 'ccna',
+                    credentialId: 'CCNA-2022-CIS789',
+                    description: 'Validates knowledge of networking fundamentals, IP connectivity, security fundamentals, and automation.'
+                },
+                {
+                    name: 'ISTQB Foundation',
+                    org: 'ISTQB',
+                    issueDate: '2021-12-01',
+                    expDate: '2024-12-01',
+                    id: 'istqb',
+                    credentialId: 'ISTQB-FL-2021-123',
+                    description: 'Foundation Level certification covering software testing fundamentals, testing throughout the software life cycle, and test techniques.'
+                },
+                {
+                    name: 'Google Cloud Professional Data Engineer',
+                    org: 'Google Cloud',
+                    issueDate: '2024-02-28',
+                    expDate: '2029-02-28',
+                    id: 'gcp-data-engineer',
+                    credentialId: 'GCP-PDE-2024-GCP456',
+                    description: 'Professional certification demonstrating ability to design and build data processing systems and machine learning models on Google Cloud.'
+                }
+            ];
+
+                        // Helpers
+                        function parseDateISO(dateStr) {
+                            return new Date(dateStr + 'T00:00:00');
+                        }
+
+                        function daysBetween(a, b) {
+                            const msPerDay = 24 * 60 * 60 * 1000;
+                            return Math.round((b - a) / msPerDay);
+                        }
+
+            function formatDate(dateStr) {
+                const date = parseDateISO(dateStr);
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            }
+
+            // Load and save data
+                        function loadSaved() {
+                            try {
+                                const raw = localStorage.getItem(STORAGE_KEY);
+                                return raw ? JSON.parse(raw) : [];
+                            } catch (e) {
+                                console.warn('Failed to parse saved certificates', e);
+                                return [];
+                            }
+                        }
+
+                        function saveAll(list) {
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+                        }
+
+            // Initialize data: combine demo certificates and saved entries
+            function initializeData() {
+                const saved = loadSaved();
+                const key = (it) => `${it.name}||${it.expDate}`;
+                const map = new Map();
+                
+                // Add saved entries first
+                saved.forEach(s => map.set(key(s), s));
+                
+                // Add demo certificates if not already in saved
+                demoCertificates.forEach(cert => {
+                    if (!map.has(key(cert))) {
+                        map.set(key(cert), cert);
+                    }
+                });
+                
+                return Array.from(map.values());
+            }
+
+            let allEntries = initializeData();
+
+                        // Render helpers
+                        function makeRow(item, headers) {
+                            const tr = document.createElement('tr');
+                            tr.setAttribute('data-expiration-date', item.expDate);
+                tr.classList.add('fade-in');
+
+                const nameTd = document.createElement('td');
+                nameTd.textContent = item.name;
+                nameTd.setAttribute('data-label', headers[0]);
+
+                const orgTd = document.createElement('td');
+                orgTd.textContent = item.org;
+                orgTd.setAttribute('data-label', headers[1]);
+
+                const issueTd = document.createElement('td');
+                issueTd.textContent = item.issueDate;
+                issueTd.setAttribute('data-label', headers[2]);
+
+                const expTd = document.createElement('td');
+                expTd.className = 'exp-date-cell';
+                expTd.textContent = item.expDate;
+                expTd.setAttribute('data-label', headers[3]);
+
+                const statusTd = document.createElement('td');
+                statusTd.className = 'status-cell';
+                statusTd.setAttribute('aria-live', 'polite');
+                statusTd.setAttribute('data-label', headers[4]);
+
+                const linkTd = document.createElement('td');
+                linkTd.setAttribute('data-label', headers[5]);
+                const a = document.createElement('a');
+                a.className = 'cert-link btn-view';
+                a.textContent = 'View';
+                a.href = '#';
+                a.setAttribute('data-cert-id', item.id || item.name.toLowerCase().replace(/\s+/g, '-'));
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showCertificate(item);
+                });
+                            linkTd.appendChild(a);
+
+                            tr.appendChild(nameTd);
+                            tr.appendChild(orgTd);
+                            tr.appendChild(issueTd);
+                            tr.appendChild(expTd);
+                            tr.appendChild(statusTd);
+                            tr.appendChild(linkTd);
+
+                            return tr;
+                        }
+
+                        function applyStatusToRow(row, today) {
+                            const expirationDateStr = row.getAttribute('data-expiration-date');
+                            const statusCell = row.querySelector('.status-cell');
+                            row.classList.remove('valid', 'expired', 'warning');
+                            statusCell.innerHTML = '';
+
+                            if (!expirationDateStr) return;
+                            const expirationDate = parseDateISO(expirationDateStr);
+                            const daysLeft = daysBetween(today, expirationDate);
+
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                const info = document.createElement('div');
+                info.className = 'muted';
+
+                            if (daysLeft < 0) {
+                                row.classList.add('expired');
+                    badge.classList.add('badge--expired');
+                    badge.textContent = 'Expired';
+                                info.textContent = `Expired ${Math.abs(daysLeft)} day(s) ago`;
+                            } else if (daysLeft <= warningDays) {
+                                row.classList.add('warning');
+                    badge.classList.add('badge--warning');
+                    badge.textContent = 'Expiring Soon';
+                                info.textContent = `Expires in ${daysLeft} day(s)`;
+                            } else {
+                                row.classList.add('valid');
+                    badge.classList.add('badge--valid');
+                    badge.textContent = 'Valid';
+                                info.textContent = `Expires in ${daysLeft} day(s)`;
+                            }
+                            statusCell.appendChild(badge);
+                            statusCell.appendChild(info);
+                        }
+
+                        function renderList(list) {
+                            tbody.innerHTML = '';
+                            const headers = Array.from(document.querySelectorAll('#certification-table thead th')).map(h => h.textContent.trim());
+                            const today = new Date();
+                
+                if (list.length === 0) {
+                    const emptyRow = document.createElement('tr');
+                    emptyRow.innerHTML = `<td colspan="6" style="text-align: center; padding: 40px; color: var(--muted);">No certificates found. Try adjusting your search or filter criteria.</td>`;
+                    tbody.appendChild(emptyRow);
+                    return;
+                }
+
+                list.forEach((item, index) => {
+                                const row = makeRow(item, headers);
+                    setTimeout(() => {
+                                tbody.appendChild(row);
+                                applyStatusToRow(row, today);
+                    }, index * 50); // Stagger animation
+                });
+            }
+
+            // Certificate viewer
+            function showCertificate(cert) {
+                const certData = demoCertificates.find(c => c.id === cert.id) || 
+                                demoCertificates.find(c => c.name === cert.name) || 
+                                cert;
+
+                // Generate credential ID if it doesn't exist
+                if (!certData.credentialId) {
+                    const orgPrefix = (certData.org || 'CERT').substring(0, 3).toUpperCase();
+                    const year = certData.issueDate ? certData.issueDate.substring(0, 4) : new Date().getFullYear();
+                    const randomNum = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+                    certData.credentialId = `${orgPrefix}-${year}-${randomNum}`;
+                }
+
+                // Generate description if it doesn't exist
+                if (!certData.description) {
+                    certData.description = `Professional certification in ${certData.name} issued by ${certData.org || 'Certifying Organization'}. This certificate validates your expertise and knowledge in the field.`;
+                }
+
+                certViewerTitle.textContent = certData.name;
+                
+                const daysLeft = daysBetween(new Date(), parseDateISO(certData.expDate));
+                const statusClass = daysLeft < 0 ? 'expired' : daysLeft <= warningDays ? 'warning' : 'valid';
+                const statusText = daysLeft < 0 ? 'Expired' : daysLeft <= warningDays ? 'Expiring Soon' : 'Valid';
+                const certId = certData.id || certData.name.toLowerCase().replace(/\s+/g, '-');
+
+                certViewerContent.innerHTML = `
+                    <div class="cert-display">
+                        <div class="cert-header">
+                            <div class="cert-logo">🏆</div>
+                            <h2>${certData.name}</h2>
+                            <p class="cert-org">Issued by ${certData.org || 'Certifying Organization'}</p>
+                        </div>
+                        <div class="cert-body">
+                            <div class="cert-info-grid">
+                                <div class="cert-info-item">
+                                    <span class="cert-label">Credential ID</span>
+                                    <span class="cert-value">${certData.credentialId}</span>
+                                </div>
+                                <div class="cert-info-item">
+                                    <span class="cert-label">Issue Date</span>
+                                    <span class="cert-value">${formatDate(certData.issueDate)}</span>
+                                </div>
+                                <div class="cert-info-item">
+                                    <span class="cert-label">Expiration Date</span>
+                                    <span class="cert-value">${formatDate(certData.expDate)}</span>
+                                </div>
+                                <div class="cert-info-item">
+                                    <span class="cert-label">Status</span>
+                                    <span class="cert-value">
+                                        <span class="badge badge--${statusClass}">${statusText}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="cert-description">
+                                <h3>About this Certification</h3>
+                                <p>${certData.description}</p>
+                            </div>
+                            <div class="cert-actions">
+                                <button class="btn btn-primary" onclick="window.print()">🖨️ Print Certificate</button>
+                                <button class="btn btn-ghost" onclick="downloadCertificate('${certId}', '${certData.name}')">📥 Download PDF</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                openCertViewer();
+            }
+
+            // Make downloadCertificate globally accessible
+            window.downloadCertificate = function(certId, certName) {
+                alert(`Demo: Downloading certificate "${certName}" (${certId}.pdf)\n\nIn a real application, this would download the actual certificate PDF file.`);
+            };
+
+            function openCertViewer() {
+                certViewerModal.classList.add('is-open');
+                certViewerModal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeCertViewer() {
+                certViewerModal.classList.remove('is-open');
+                certViewerModal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
+
+            // Filter and sort
+                        function filterAndSort(all) {
+                            const q = (searchInput.value || '').toLowerCase().trim();
+                            const filter = filterSelect.value;
+                            const sort = sortSelect.value;
+
+                            let result = all.filter(item => {
+                                const text = (item.name + ' ' + item.org).toLowerCase();
+                                if (q && !text.includes(q)) return false;
+                                return true;
+                            });
+
+                            // Compute status for filter
+                            const today = new Date();
+                            result = result.filter(item => {
+                                if (filter === 'all') return true;
+                                const daysLeft = daysBetween(today, parseDateISO(item.expDate));
+                                if (filter === 'valid') return daysLeft > warningDays;
+                                if (filter === 'warning') return daysLeft <= warningDays && daysLeft >= 0;
+                                if (filter === 'expired') return daysLeft < 0;
+                                return true;
+                            });
+
+                            // Sorting
+                result.sort((a, b) => {
+                                if (sort === 'exp-asc') return parseDateISO(a.expDate) - parseDateISO(b.expDate);
+                                if (sort === 'exp-desc') return parseDateISO(b.expDate) - parseDateISO(a.expDate);
+                                if (sort === 'name-asc') return a.name.localeCompare(b.name);
+                                if (sort === 'name-desc') return b.name.localeCompare(a.name);
+                                return 0;
+                            });
+
+                            return result;
+                        }
+
+            // Modal functions
+            function openModal() {
+                modal.classList.add('is-open');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                addForm.reset();
+            }
+
+            // Event listeners
+                        modalOverlay.addEventListener('click', closeModal);
+                        modalClose.addEventListener('click', closeModal);
+                        cancelAdd.addEventListener('click', closeModal);
+                        addBtn.addEventListener('click', openModal);
+            certViewerOverlay.addEventListener('click', closeCertViewer);
+            certViewerClose.addEventListener('click', closeCertViewer);
+
+                        // Initial render
+                        renderList(filterAndSort(allEntries));
+
+                        // UI interactions
+                        searchInput.addEventListener('input', () => renderList(filterAndSort(allEntries)));
+                        filterSelect.addEventListener('change', () => renderList(filterAndSort(allEntries)));
+                        sortSelect.addEventListener('change', () => renderList(filterAndSort(allEntries)));
+
+                        // Add form submit
+                        addForm.addEventListener('submit', (e) => {
+                            e.preventDefault();
+                            const form = new FormData(addForm);
+                            const item = {
+                                name: (form.get('name') || '').trim(),
+                                org: (form.get('org') || '').trim(),
+                                issueDate: form.get('issueDate') || '',
+                                expDate: form.get('expDate') || '',
+                    link: (form.get('link') || '').trim(),
+                    id: (form.get('name') || '').toLowerCase().replace(/\s+/g, '-'),
+                    description: `Certificate in ${form.get('name') || ''} issued by ${form.get('org') || ''}.`
+                            };
+
+                const saved = loadSaved();
+                            saved.unshift(item);
+                            saveAll(saved);
+
+                const k = `${item.name}||${item.expDate}`;
+                if (!allEntries.find(x => `${x.name}||${x.expDate}` === k)) {
+                    allEntries.unshift(item);
+                }
+
+                            renderList(filterAndSort(allEntries));
+                            closeModal();
+                        });
+
+            // Accessibility: close modals with Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (certViewerModal.classList.contains('is-open')) {
+                        closeCertViewer();
+                    } else if (modal.classList.contains('is-open')) {
+                        closeModal();
+                    }
+                }
+            });
+                    });
+                </script>
+</body>
+</html>
